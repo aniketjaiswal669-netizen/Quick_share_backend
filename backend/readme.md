@@ -1,801 +1,339 @@
-# Quick Share Backend
 
-Backend for **Quick Share**, a real-time room-based file and messaging application built with **FastAPI, MongoDB, REST APIs, and WebSockets**.
+Library
+/
+README.md
 
-Users can create or join rooms, exchange real-time messages, send files, view active users, retrieve chat history, and delete messages according to their permissions.
 
----
 
-## 🚀 Features
+Quick Share Backend
+FastAPI + MongoDB + WebSocket backend for the Quick Share room-based chat and file-sharing application.
 
-* Create and join chat rooms
-* Session-token based authentication
-* Random username generation for users
-* Real-time messaging using WebSockets
-* Active-user tracking
-* File upload using Base64 data
-* File storage directly in MongoDB
-* File download/open API
-* Chat history
-* Message deletion
-* Admin and normal-user permissions
-* Room exit and room termination
-* Automatic cleanup of room-related data
+Current Features
+Create and join rooms
 
----
+Session-token authentication
 
-## 🛠️ Tech Stack
+Admin and normal-user roles
 
-### Backend
+Real-time text messaging through WebSocket
 
-* **Python**
-* **FastAPI**
-* **Uvicorn**
-* **MongoDB**
-* **PyMongo**
-* **WebSockets**
-* **Pydantic**
+File sharing through REST upload + WebSocket file notifications
 
-### Database
+Files stored directly in MongoDB as BSON Binary
 
-MongoDB is used to store:
+MongoDB _id used as file_id and message ID
 
-* Rooms
-* Users
-* Messages
-* Files
+Message history
 
----
+User/admin message deletion
 
-## 📁 Project Structure
+Protected file download
 
-```text
+Active-user tracking
+
+left_at tracking for users who leave
+
+Admin room cleanup
+
+Pydantic validation for room requests
+
+GridFS is not used in the current backend.
+
+Project Structure
 Quick_share/
-│
 ├── backend/
 │   ├── main.py
+│   ├── router.py
 │   ├── db.py
 │   ├── data_models.py
-│   ├── router.py
 │   └── websocket.py
-│
 ├── venv/
-│
 └── README.md
-```
-
-### File Responsibilities
-
-| File             | Purpose                            |
-| ---------------- | ---------------------------------- |
-| `main.py`        | FastAPI application and API routes |
-| `db.py`          | MongoDB connection and collections |
-| `data_models.py` | Pydantic request/response models   |
-| `router.py`      | Backend business logic             |
-| `websocket.py`   | Real-time WebSocket communication  |
-
----
-
-# 🗄️ Database Structure
-
-Database:
-
-```text
-quick_share_db
-```
-
-Collections:
-
-```text
+MongoDB Collections
 rooms
-room_users
-messages
-files
-```
-
-### `rooms`
-
 Stores room information.
 
-Example:
-
-```json
 {
-  "room_id": "UIU888",
-  "created_at": "..."
+  "room_id": "III999",
+  "created_at": "2026-09-24T14:00:00",
+  "last_activity": "2026-09-24T15:03:10"
 }
-```
+room_users
+Stores users, sessions, roles, and leave time.
 
-### `room_users`
-
-Stores users belonging to rooms.
-
-Example:
-
-```json
 {
-  "room_id": "UIU888",
-  "user_name": "LuckyLeopard",
+  "room_id": "III999",
+  "session_token": "session-token",
+  "user_name": "BrightKoala",
   "user_type": "admin",
-  "session_token": "...",
-  "joined_at": "..."
+  "joined_at": "2026-09-24T14:01:00",
+  "left_at": null
 }
-```
+When a normal user leaves, the record is retained and only left_at is updated.
 
-### `messages`
+left_at = current UTC time
+Active users are users whose:
 
-Stores chat messages and references to uploaded files.
-
-Example:
-
-```json
+left_at = null
+messages
 {
-  "room_id": "UIU888",
-  "user_name": "LuckyLeopard",
-  "message": "Hello",
+  "_id": "ObjectId(...)",
+  "room_id": "III999",
+  "user_name": "BrightKoala",
+  "message": "Hello everyone",
   "file_id": null,
-  "sent_at": "..."
+  "type": "text",
+  "sent_at": "2026-09-24T15:03:10"
 }
-```
-
-For a file message:
-
-```json
+files
 {
-  "room_id": "UIU888",
-  "user_name": "LuckyLeopard",
-  "message": null,
-  "file_id": "...",
-  "sent_at": "..."
-}
-```
-
-### `files`
-
-Files are stored directly in MongoDB.
-
-Example:
-
-```json
-{
-  "room_id": "UIU888",
-  "user_name": "LuckyLeopard",
+  "_id": "ObjectId(...)",
+  "room_id": "III999",
+  "user_name": "BrightKoala",
   "filename": "image.png",
   "content_type": "image/png",
-  "size": 123456,
-  "file_data": "<binary data>",
-  "created_at": "..."
+  "size": 50360,
+  "file_data": "<BSON Binary>",
+  "created_at": "2026-09-24T15:04:00"
 }
-```
-
-> **Note:** This project does not use MongoDB GridFS. File data is stored directly in the `files` collection.
-
----
-
-# ⚙️ Installation
-
-## 1. Clone the repository
-
-```bash
-git clone https://github.com/aniketjaiswal669-netizen/Quick_Share.git
-cd Quick_Share
-```
-
-Switch to the backend branch if required:
-
-```bash
-git checkout develop
-```
-
----
-
-## 2. Create a virtual environment
-
-```bash
-python3 -m venv venv
-```
-
-Activate it:
-
-### Linux/macOS
-
-```bash
-source venv/bin/activate
-```
-
-### Windows
-
-```bash
-venv\Scripts\activate
-```
-
----
-
-## 3. Install dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-If `requirements.txt` is not present, install the main dependencies:
-
-```bash
-pip install fastapi uvicorn pymongo websockets pydantic
-```
-
----
-
-# 🔐 MongoDB Configuration
-
-The backend requires a MongoDB database.
-
-Configure the MongoDB connection in:
-
-```text
-backend/db.py
-```
-
-The application uses:
-
-```text
-quick_share_db
-```
-
-Example structure:
-
-```python
-from pymongo import MongoClient
-
-client = MongoClient("YOUR_MONGODB_CONNECTION_STRING")
-
-db = client["quick_share_db"]
-
-rooms_collection = db["rooms"]
-user_collection = db["room_users"]
-messages_collection = db["messages"]
-files_collection = db["files"]
-```
-
-For production, use an environment variable instead of placing credentials directly in source code.
-
----
-
-# ▶️ Running the Backend
-
-From the project root:
-
-```bash
-uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-The REST API will be available at:
-
-```text
-http://localhost:8000
-```
-
-FastAPI documentation:
-
-```text
-http://localhost:8000/docs
-```
-
----
-
-# 🔌 WebSocket Server
-
-Quick Share also uses WebSockets for real-time communication.
-
-Example:
-
-```text
-ws://YOUR_IP:8001?session_token=SESSION_TOKEN
-```
-
-Example on a local network:
-
-```text
-ws://192.168.1.120:8001?session_token=SESSION_TOKEN
-```
-
-The WebSocket connection authenticates the user using the `session_token`.
-
----
-
-# 🔑 Authentication
-
-Quick Share uses a **session token** to identify users.
-
-When a user creates or joins a room, the backend returns:
-
-```json
-{
-  "room_id": "UIU888",
-  "session_token": "SESSION_TOKEN",
-  "user_name": "LuckyLeopard"
-}
-```
-
-The frontend must keep the session token and send it with protected requests.
-
----
-
-# 📡 REST API
-
-## 1. Create / Join Room
-
-### Endpoint
-
-```http
+REST API
+Create / Join Room
 POST /room
-```
+Request:
 
-### Request
-
-```json
 {
-  "room_id": "UIU888",
+  "room_id": "345678",
   "action": "create"
 }
-```
+action can be:
 
-For joining:
+create
+join
+room_id is validated with a minimum length of 4 and maximum length of 15.
 
-```json
+Response contains:
+
 {
-  "room_id": "UIU888",
-  "action": "join"
-}
-```
-
-### Response
-
-```json
-{
-  "room_id": "UIU888",
+  "room_id": "345678",
   "session_token": "...",
-  "user_name": "LuckyLeopard"
+  "user_name": "GoldenOtter",
+  "user_type": "admin"
 }
-```
-
----
-
-# 🚪 Exit / End Room
-
-### Endpoint
-
-```http
-POST /room/out
-```
-
-The session token is used to identify the current user.
-
-### Normal User
-
-A normal user leaving the room removes their user record.
-
-### Admin
-
-The admin can end the room and clean up associated room data.
-
-Cleanup includes:
-
-```text
-rooms
-room_users
-messages
-files
-```
-
----
-
-# 📤 Upload File
-
-### Endpoint
-
-```http
+Upload File
 POST /upload
-```
+Form fields:
 
-The frontend sends:
-
-```text
 room_id
 session_token
 filename
 content_type
 file_data
-```
+file_data is Base64 encoded.
 
-`file_data` is sent as a Base64 encoded string.
+The backend decodes the Base64 data, stores the bytes as BSON Binary, and MongoDB generates the file_id.
 
-### Example
+Example response:
 
-```text
-room_id = UIU888
-session_token = ...
-filename = photo.png
-content_type = image/png
-file_data = BASE64_DATA
-```
-
-### Response
-
-```json
 {
   "message": "File uploaded successfully",
-  "file_id": "...",
-  "filename": "photo.png",
+  "file_id": "66f100000000000000000010",
+  "filename": "image.png",
   "content_type": "image/png",
-  "size": 123456
+  "size": 50360
 }
-```
+Get File
+GET /file/{file_id}?session_token={session_token}
+The backend validates the session, verifies that the user belongs to the same room as the file, and returns the original file bytes and content type.
 
-The returned `file_id` is then sent through the WebSocket message.
+Message History
+GET /history/{room_id}?session_token={session_token}
+Returns messages in chronological order.
 
----
+The MongoDB _id is converted to a string so the frontend can use it for deletion.
 
-# 📥 Get / Open File
+Example:
 
-The file API uses the `file_id` to retrieve a stored file.
+{
+  "room_id": "III999",
+  "messages": [
+    {
+      "_id": "66f100000000000000000004",
+      "room_id": "III999",
+      "user_name": "BrightKoala",
+      "message": "Hello everyone",
+      "file_id": null,
+      "sent_at": "2026-09-24T15:03:10"
+    }
+  ]
+}
+Delete Message
+DELETE /message/{message_id}?session_token={session_token}
+Permissions:
 
-The backend:
+Normal user → can delete own messages
+Admin       → can delete any message in the room
+If the message contains a file_id, the associated file is also deleted.
 
-1. Validates the session token.
-2. Finds the requested file.
-3. Verifies that the file belongs to the user's room.
-4. Returns the stored file data with the correct content type.
+No separate message_id database field is required because MongoDB _id is used.
 
-This allows the frontend to display images and open/download other supported files.
+Active Users
+GET /room/active-users?session_token={session_token}
+All users in the room can access this endpoint.
 
----
+Example:
 
-# 💬 WebSocket Messaging
+{
+  "room_id": "III999",
+  "active_users": [
+    {
+      "user_name": "BrightKoala",
+      "user_type": "admin",
+      "joined_at": "2026-09-24T14:01:00",
+      "left_at": null
+    }
+  ],
+  "count": 1
+}
+Leave / End Room
+POST /room/out
+Parameters:
 
-After connecting:
+room_id
+session_token
+Normal users are marked as left:
 
-```text
-ws://YOUR_IP:8001?session_token=SESSION_TOKEN
-```
+left_at = datetime.utcnow()
+Their user record is retained.
 
-the client can send messages through the WebSocket.
+Admin room-ending behavior removes the room's associated data according to the current backend cleanup logic.
 
-A text message can contain:
+WebSocket
+Connection:
 
-```json
+ws://HOST:8001?session_token=YOUR_SESSION_TOKEN
+The session token is validated before accepting the connection.
+
+Connection Response
+{
+  "type": "connection",
+  "status": "connected",
+  "room_id": "III999",
+  "user_name": "BrightKoala"
+}
+Text Message
 {
   "message": "Hello everyone"
 }
-```
+File Message
+First upload the file through /upload, then send the returned file_id:
 
-A file message can contain:
-
-```json
 {
-  "message": null,
-  "file_id": "FILE_ID"
+  "file_id": "66f100000000000000000010"
 }
-```
-
-The server broadcasts messages to users connected to the same room.
-
-### Example server response
-
-```json
+Text + File
 {
-  "type": "message",
-  "data": {
-    "room_id": "UIU888",
-    "user_name": "LuckyLeopard",
-    "message": "Hello everyone",
-    "file_id": null,
-    "type": "text",
-    "created_at": "...",
-    "_id": "..."
-  }
+  "message": "Here is the image",
+  "file_id": "66f100000000000000000010"
 }
-```
+Message types:
 
----
+message only       → text
+file only          → file
+message + file     → text_file
+The WebSocket sends file references and metadata, not the actual file bytes.
 
-# 👥 Active Users
+User Leave Tracking
+The current logic keeps normal users in room_users.
 
-The backend maintains currently connected WebSocket users.
+User joins
+    ↓
+left_at = null
+    ↓
+User disconnects/leaves
+    ↓
+left_at = current UTC time
+    ↓
+User record remains
+This allows the database to retain user history while active-user APIs only return users with left_at: null.
 
-The active-user API returns information such as:
+Admin Cleanup
+When the admin ends/leaves according to the current cleanup logic:
 
-```json
-{
-  "room_id": "UIU888",
-  "active_users": [
-    {
-      "user_name": "LuckyLeopard",
-      "user_type": "admin",
-      "joined_at": "..."
-    },
-    {
-      "user_name": "GoldenOtter",
-      "user_type": "user",
-      "joined_at": "..."
-    }
-  ],
-  "count": 2
-}
-```
+Delete room messages
+        ↓
+Delete room files
+        ↓
+Delete room users
+        ↓
+Delete room
+The file cleanup should use:
 
-The WebSocket connection is responsible for detecting users connecting and disconnecting in real time.
+db.files_collection.delete_many({
+    "room_id": room_id
+})
+Running the Backend
+Activate the virtual environment:
 
----
+source venv/bin/activate
+Run FastAPI:
 
-# 🕘 Chat History
+uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+FastAPI documentation:
 
-### Endpoint
+http://localhost:8000/docs
+The WebSocket server runs separately on its configured port.
 
-```http
-GET /history/{room_id}
-```
+Recommended .gitignore
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+.env
+Do not commit virtual environments, Python cache files, or secrets.
 
-The request requires a valid session token.
-
-Example:
-
-```text
-GET /history/UIU888?session_token=SESSION_TOKEN
-```
-
-History contains:
-
-```text
-_id
-room_id
-user_name
-message
-file_id
-sent_at
-```
-
-The frontend can use `file_id` to retrieve previously uploaded files.
-
----
-
-# 🗑️ Delete Message
-
-The backend supports message deletion.
-
-The server verifies:
-
-1. The message exists.
-2. The session token is valid.
-3. The message belongs to the user's room.
-4. The user has permission to delete the message.
-
-### Permissions
-
-```text
-Admin
- └── Can delete messages from users
-
-Normal User
- └── Can delete their own messages
-```
-
----
-
-# 🔄 Application Flow
-
-```text
-                    ┌─────────────────┐
-                    │     Frontend    │
-                    │   Expo / React  │
-                    └────────┬────────┘
-                             │
-                ┌────────────┴────────────┐
-                │                         │
-                ▼                         ▼
-        ┌──────────────┐          ┌──────────────┐
-        │ REST APIs    │          │  WebSocket   │
-        │ Port 8000    │          │  Port 8001   │
-        └──────┬───────┘          └──────┬───────┘
-               │                         │
-               └────────────┬────────────┘
-                            ▼
-                    ┌───────────────┐
-                    │    FastAPI    │
-                    │    Backend    │
-                    └───────┬───────┘
-                            │
-                            ▼
-                    ┌───────────────┐
-                    │    MongoDB    │
-                    │ quick_share_db│
-                    └───────────────┘
-```
-
----
-
-# 📁 File Sending Flow
-
-```text
+Architecture
+React / Vite Frontend
+        │
+        ├──────── HTTP ────────► FastAPI :8000
+        │                          │
+        │                          ▼
+        │                       MongoDB
+        │
+        └──── WebSocket ──────► WebSocket server :8001
+File flow
 Frontend
    │
-   │ Base64 file data
+   │ POST /upload
+   │ Base64 file
    ▼
-POST /upload
+MongoDB files collection
    │
+   │ generated file_id
    ▼
-Backend validates session
+WebSocket message
    │
+   │ file_id
    ▼
-Store file in MongoDB
+Other clients
    │
+   │ GET /file/{file_id}
    ▼
-Return file_id
-   │
-   ▼
-Frontend sends file_id
-through WebSocket
-   │
-   ▼
-Backend broadcasts message
-   │
-   ▼
-Other users receive file_id
-   │
-   ▼
-Frontend requests file
-   │
-   ▼
-File displayed / opened
-```
+File bytes
+Security / Validation
+Session tokens are checked for:
 
----
+File upload
 
-# 🔒 Security
+File retrieval
 
-The backend uses session tokens to protect room-specific operations.
+Message history
 
-Protected operations include:
+Message deletion
 
-* File upload
-* File retrieval
-* Chat history
-* Message deletion
-* Active-user information
-* Room exit
+Active-user requests
 
-The backend should verify that a requested file or message belongs to the authenticated user's room before returning or modifying it.
+Room exit
 
-For production deployment, additional security should be considered:
+WebSocket connections
 
-* HTTPS / WSS
-* Secure environment variables
-* File-size limits
-* MIME-type validation
-* Rate limiting
-* Strong session-token generation
-* MongoDB authentication
-* Input validation
-
----
-
-# 🧪 API Documentation
-
-FastAPI automatically provides interactive API documentation.
-
-Open:
-
-```text
-http://localhost:8000/docs
-```
-
-Alternative documentation:
-
-```text
-http://localhost:8000/redoc
-```
-
----
-
-# 🌐 Frontend Connection
-
-For a frontend running on the same local network, configure the backend IP.
-
-Example:
-
-```text
-REST API:
-http://192.168.1.120:8000
-
-WebSocket:
-ws://192.168.1.120:8001
-```
-
-The IP address depends on the machine running the backend.
-
----
-
-# 🐛 Troubleshooting
-
-## `ModuleNotFoundError`
-
-If running:
-
-```bash
-uvicorn main:app
-```
-
-from the project root causes import errors, run:
-
-```bash
-uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-Or enter the backend directory:
-
-```bash
-cd backend
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
-```
-
----
-
-## WebSocket Not Connecting
-
-Check:
-
-```text
-1. Backend WebSocket server is running
-2. Correct IP address is being used
-3. Port 8001 is accessible
-4. session_token is valid
-5. Phone and computer are on the same network
-```
-
----
-
-## MongoDB Connection Error
-
-Check:
-
-```text
-MongoDB connection string
-MongoDB server status
-Database permissions
-Network access / IP whitelist
-```
-
----
-
-# 📌 Development Notes
-
-Quick Share currently uses:
-
-```text
-FastAPI       → REST backend
-WebSocket     → Real-time communication
-MongoDB       → Persistent storage
-Base64        → File transfer from frontend
-```
-
-GridFS is **not used**.
-
-Files are stored directly inside the MongoDB `files` collection.
-
----
-
-# 🚧 Future Improvements
-
-Potential improvements include:
-
-* Better file-size management
-* File compression
-* Message reactions
-* Typing indicators
-* Read receipts
-* Admin handover when the admin leaves
-* Better WebSocket connection recovery
-* Redis for scalable WebSocket state
-* Cloud object storage for large files
-* Production authentication
-* HTTPS/WSS deployment
-* A
+Room-specific resources are also checked against the authenticated user's room.
