@@ -236,24 +236,53 @@ async def handle_client(websocket):
             room_id,
             websocket
         )
+
         user_type = user.get("user_type") if user else None
 
-        db.user_collection.delete_one({
-            "session_token": session_token
-        })
-
-        print(
-            f"{user_name} removed from user_collection"
-        )
         if user_type == "admin":
 
-           db.messages_collection.delete_many({"room_id": room_id})
-           db.user_collection.delete_many({"room_id":room_id})
-           db.user_collection.find_one({"room_id":room_id})
-           room_result = db.rooms_collection.delete_one({"room_id": room_id })
-           print("Rooms deleted:",room_result.deleted_count)
+            db.messages_collection.delete_many({
+                "room_id": room_id
+            })
 
-           print("========== CLEANUP DONE ==========\n")
+            db.files_collection.delete_many({
+                "room_id": room_id
+            })
+
+            db.user_collection.delete_many({
+                "room_id": room_id
+            })
+
+            room_result = db.rooms_collection.delete_one({
+                "room_id": room_id
+            })
+
+            print(
+                "Rooms deleted:",
+                room_result.deleted_count
+            )
+
+            print(
+                "========== CLEANUP DONE ==========\n"
+            )
+
+        else:
+
+            db.user_collection.update_one(
+                {
+                    "session_token": session_token,
+                    "room_id": room_id
+                },
+                {
+                    "$set": {
+                        "left_at": str(datetime.utcnow())
+                    }
+                }
+            )
+
+            print(
+                f"{user_name} marked as left"
+            )
 
 async def main():
  

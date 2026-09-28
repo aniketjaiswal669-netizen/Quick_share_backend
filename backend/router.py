@@ -51,6 +51,7 @@ def room(room_id, action):
             "user_name": user_name,
             "session_token": session_token,
             "joined_at": now,
+            "left_at":"",
             "user_type": "admin",
             "status": "online"
         }
@@ -81,6 +82,7 @@ def room(room_id, action):
             "user_name": user_name,
             "session_token": session_token,
             "joined_at": now,
+            "left_at":"",
             "user_type": "user",
             "status": "online"
         }
@@ -93,7 +95,7 @@ def room(room_id, action):
             "user_name": user_name,
             "session_token": session_token
         }
-
+ 
     else:
         raise HTTPException(
             status_code=400,
@@ -272,9 +274,14 @@ def room_out(room_id, session_token):
             "room_id": room_id
         }
 
-    db.user_collection.delete_one({
-        "_id": user["_id"]
-    })
+    db.user_collection.update_one(
+       {"session_token": session_token},
+       {
+        "$set": {
+            "left_at": str(datetime.utcnow())
+        }
+        }
+    )
 
     return {
         "message": "You have left the room",
@@ -392,3 +399,51 @@ def get_active_users(session_token: str):
     }
 
 
+def download_file(file_id: str, session_token: str):
+
+    user = db.user_collection.find_one({
+        "session_token": session_token
+    })
+
+    if not user:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid session token"
+        )
+
+    try:
+        file_object_id = ObjectId(file_id)
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file ID"
+        )
+
+    file = db.files_collection.find_one({
+        "_id": file_object_id
+    })
+
+    if not file:
+        raise HTTPException(
+            status_code=404,
+            detail="File not found"
+        )
+
+    if file["room_id"] != user["room_id"]:
+        raise HTTPException(
+            status_code=403,
+            detail="You do not have access to this file"
+        )
+
+    return Response(
+        content=file["file_data"],
+        media_type=file.get(
+            "content_type",
+            "application/octet-stream"
+        ),
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="{file["filename"]}"'
+            )
+        }
+    )

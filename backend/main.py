@@ -87,3 +87,14 @@ def get_active_users(
     session_token: str = Query(..., min_length=1)
 ):
     return router.get_active_users(session_token)
+
+
+@app.get("/download/{file_id}")
+async def download_file(
+    file_id: str,
+    session_token: str = Query(...)
+):
+    return router.download_file(
+        file_id=file_id,
+        session_token=session_token
+    )
