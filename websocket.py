@@ -5,7 +5,7 @@ from datetime import datetime
 import websockets
 from websockets.exceptions import ConnectionClosed
 
-import db
+from Quick_share_backend import db
 
 
 rooms = {} 
