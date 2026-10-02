@@ -1,4 +1,4 @@
-from backend import db
+import db
 
 import random
 
