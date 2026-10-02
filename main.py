@@ -1,5 +1,5 @@
 from fastapi import FastAPI, UploadFile, Form, File, Query, Path
-from backend import data_models, router
+import data_models, router
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
