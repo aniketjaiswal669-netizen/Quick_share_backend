@@ -1,10 +1,10 @@
-from backend import db,random_generation
+import db,random_generation
 from datetime import datetime
 from fastapi import HTTPException,UploadFile,Form
 from bson import ObjectId
 from fastapi.responses import Response
 import base64
-from backend.websocket import broadcast_to_room
+from websocket import broadcast_to_room
 import json
 
 ALLOWED_TYPES = {
