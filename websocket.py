@@ -5,7 +5,7 @@ from datetime import datetime
 import websockets
 from websockets.exceptions import ConnectionClosed
 
-from backend import db
+import db
 
 
 rooms = {} 
