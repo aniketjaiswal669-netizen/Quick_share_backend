@@ -9,7 +9,7 @@ adjectives = [
     "Bright", "Calm", "Fierce", "Gentle", "Mighty",
     "Rapid", "Smart", "Bold", "Fresh", "Cosmic",
     "Golden", "Silver", "Tiny", "Big", "Magic",
-    "Shadow", "Sunny", "Stormy", "Flying", "Frozen"
+    "Shadow", "Stormy", "Flying", "Frozen"
 ]
 
 animals = [
