@@ -1,6 +1,7 @@
 import asyncio
 import json
-from datetime import datetime
+from datetime import datetime, timezone
+from urllib.parse import urlparse, parse_qs
 
 import websockets
 from websockets.exceptions import ConnectionClosed
@@ -8,17 +9,37 @@ from websockets.exceptions import ConnectionClosed
 import db
 
 
-rooms = {} 
+# ============================================================
+# ACTIVE WEBSOCKET CLIENTS
+# rooms = {
+#     "UIU888": {websocket1, websocket2}
+# }
+# ============================================================
+
+rooms = {}
 
 
+# ============================================================
+# TIME
+# ============================================================
+
+def utc_now():
+    return datetime.now(timezone.utc).isoformat()
+
+
+# ============================================================
+# GET USER FROM SESSION TOKEN
+# ============================================================
 
 def get_user(session_token):
-
     return db.user_collection.find_one({
         "session_token": session_token
     })
 
 
+# ============================================================
+# ADD CLIENT
+# ============================================================
 
 def add_client(room_id, websocket):
 
@@ -28,6 +49,10 @@ def add_client(room_id, websocket):
     rooms[room_id].add(websocket)
 
 
+# ============================================================
+# REMOVE CLIENT
+# ============================================================
+
 def remove_client(room_id, websocket):
 
     if room_id not in rooms:
@@ -35,9 +60,13 @@ def remove_client(room_id, websocket):
 
     rooms[room_id].discard(websocket)
 
-    if len(rooms[room_id]) == 0:
+    if not rooms[room_id]:
         del rooms[room_id]
 
+
+# ============================================================
+# GET ACTIVE USERS
+# ============================================================
 
 def get_active_users(room_id):
 
@@ -48,7 +77,11 @@ def get_active_users(room_id):
 
     for websocket in rooms[room_id]:
 
-        user = getattr(websocket, "user_data", None)
+        user = getattr(
+            websocket,
+            "user_data",
+            None
+        )
 
         if user:
 
@@ -60,7 +93,9 @@ def get_active_users(room_id):
     return active_users
 
 
-
+# ============================================================
+# BROADCAST TO ROOM
+# ============================================================
 
 async def broadcast_to_room(room_id, message):
 
@@ -69,7 +104,11 @@ async def broadcast_to_room(room_id, message):
 
     disconnected_clients = set()
 
-    for client in rooms[room_id]:
+    # Make a copy so the original set cannot cause
+    # iteration problems if something disconnects.
+    clients = list(rooms[room_id])
+
+    for client in clients:
 
         try:
 
@@ -88,13 +127,26 @@ async def broadcast_to_room(room_id, message):
 
             disconnected_clients.add(client)
 
+    # Remove disconnected clients
     for client in disconnected_clients:
 
-        rooms[room_id].discard(client)
+        if room_id in rooms:
+            rooms[room_id].discard(client)
+
+    # Delete empty room from memory
+    if room_id in rooms and not rooms[room_id]:
+
+        del rooms[room_id]
 
 
+# ============================================================
+# BROADCAST ACTIVE USERS
+# ============================================================
 
 async def broadcast_active_users(room_id):
+
+    if room_id not in rooms:
+        return
 
     active_users = get_active_users(room_id)
 
@@ -114,6 +166,32 @@ async def broadcast_active_users(room_id):
     )
 
 
+# ============================================================
+# BROADCAST MESSAGE DELETED
+# ============================================================
+
+async def broadcast_message_deleted(
+    room_id,
+    message_id
+):
+
+    response = json.dumps({
+
+        "type": "message_deleted",
+
+        "message_id": message_id
+
+    })
+
+    await broadcast_to_room(
+        room_id,
+        response
+    )
+
+
+# ============================================================
+# HANDLE CLIENT
+# ============================================================
 
 async def handle_client(websocket):
 
@@ -124,39 +202,22 @@ async def handle_client(websocket):
 
     try:
 
+        # ----------------------------------------------------
+        # GET SESSION TOKEN
+        # ----------------------------------------------------
 
         query = websocket.request.path
 
-        if "?" not in query:
+        parsed_url = urlparse(query)
 
-            await websocket.close(
-                code=4001,
-                reason="Session token required"
-            )
-
-            return
-
-        query_string = query.split(
-            "?",
-            1
-        )[1]
-
-        params = {}
-
-        for item in query_string.split("&"):
-
-            if "=" in item:
-
-                key, value = item.split(
-                    "=",
-                    1
-                )
-
-                params[key] = value
+        params = parse_qs(
+            parsed_url.query
+        )
 
         session_token = params.get(
-            "session_token"
-        )
+            "session_token",
+            [None]
+        )[0]
 
         if not session_token:
 
@@ -166,6 +227,10 @@ async def handle_client(websocket):
             )
 
             return
+
+        # ----------------------------------------------------
+        # GET USER
+        # ----------------------------------------------------
 
         user = get_user(
             session_token
@@ -179,6 +244,10 @@ async def handle_client(websocket):
             )
 
             return
+
+        # ----------------------------------------------------
+        # GET USER DETAILS
+        # ----------------------------------------------------
 
         room_id = user.get(
             "room_id"
@@ -201,6 +270,9 @@ async def handle_client(websocket):
 
             return
 
+        # ----------------------------------------------------
+        # STORE USER DATA ON WEBSOCKET
+        # ----------------------------------------------------
 
         websocket.user_data = {
 
@@ -208,9 +280,14 @@ async def handle_client(websocket):
 
             "user_type": user_type,
 
-            "room_id": room_id
+            "room_id": room_id,
+
+            "session_token": session_token
         }
 
+        # ----------------------------------------------------
+        # ADD CLIENT
+        # ----------------------------------------------------
 
         add_client(
             room_id,
@@ -222,6 +299,9 @@ async def handle_client(websocket):
             f"to room {room_id}"
         )
 
+        # ----------------------------------------------------
+        # CONNECTION RESPONSE
+        # ----------------------------------------------------
 
         await websocket.send(
             json.dumps({
@@ -232,16 +312,30 @@ async def handle_client(websocket):
 
                 "room_id": room_id,
 
-                "user_name": user_name
+                "user_name": user_name,
+
+                "user_type": user_type
+
             })
         )
 
+        # ----------------------------------------------------
+        # BROADCAST ACTIVE USERS
+        # ----------------------------------------------------
 
         await broadcast_active_users(
             room_id
         )
 
+        # ====================================================
+        # RECEIVE MESSAGES
+        # ====================================================
+
         async for raw_message in websocket:
+
+            # ------------------------------------------------
+            # PARSE JSON
+            # ------------------------------------------------
 
             try:
 
@@ -256,13 +350,70 @@ async def handle_client(websocket):
 
                         "type": "error",
 
-                        "message": "Invalid JSON"
+                        "message":
+                        "Invalid JSON"
+
                     })
                 )
 
                 continue
 
+            # ------------------------------------------------
+            # GET EVENT TYPE
+            # ------------------------------------------------
 
+            event_type = data.get(
+                "type"
+            )
+
+            # =================================================
+            # DELETE MESSAGE EVENT
+            # =================================================
+
+            if event_type == "delete_message":
+
+                message_id = data.get(
+                    "message_id"
+                )
+
+                if not message_id:
+
+                    await websocket.send(
+                        json.dumps({
+
+                            "type": "error",
+
+                            "message":
+                            "message_id required"
+
+                        })
+                    )
+
+                    continue
+
+                # NOTE:
+                # Actual permission checking and MongoDB
+                # deletion should be handled by your
+                # DELETE API.
+                #
+                # This WebSocket event only broadcasts
+                # the deletion to connected users.
+
+                await broadcast_message_deleted(
+                    room_id,
+                    message_id
+                )
+
+                print(
+                    f"Message {message_id} "
+                    f"deleted in room {room_id}"
+                )
+
+                continue
+
+            # =================================================
+            # NORMAL MESSAGE
+            # =================================================
 
             message_text = data.get(
                 "message"
@@ -272,6 +423,9 @@ async def handle_client(websocket):
                 "file_id"
             )
 
+            # ------------------------------------------------
+            # VALIDATE MESSAGE
+            # ------------------------------------------------
 
             if not message_text and not file_id:
 
@@ -282,10 +436,15 @@ async def handle_client(websocket):
 
                         "message":
                         "Message or file_id required"
+
                     })
                 )
 
                 continue
+
+            # ------------------------------------------------
+            # DETERMINE MESSAGE TYPE
+            # ------------------------------------------------
 
             if message_text and file_id:
 
@@ -299,6 +458,10 @@ async def handle_client(websocket):
 
                 message_type = "file"
 
+            # ------------------------------------------------
+            # CREATE MESSAGE DATA
+            # ------------------------------------------------
+
             message_data = {
 
                 "room_id": room_id,
@@ -311,31 +474,44 @@ async def handle_client(websocket):
 
                 "type": message_type,
 
-                "created_at":
-                    datetime.now().isoformat()
+                "created_at": utc_now()
+
             }
 
+            # ------------------------------------------------
+            # SAVE TO MONGODB
+            # ------------------------------------------------
 
-            result = db.messages_collection.insert_one(
-                message_data
+            result = (
+                db.messages_collection.insert_one(
+                    message_data
+                )
             )
 
             message_data["_id"] = str(
                 result.inserted_id
             )
 
+            # ------------------------------------------------
+            # BROADCAST MESSAGE
+            # ------------------------------------------------
 
             response = json.dumps({
 
                 "type": "message",
 
                 "data": message_data
+
             })
 
             await broadcast_to_room(
                 room_id,
                 response
             )
+
+    # ========================================================
+    # CONNECTION CLOSED
+    # ========================================================
 
     except ConnectionClosed:
 
@@ -344,6 +520,9 @@ async def handle_client(websocket):
             f"disconnected"
         )
 
+    # ========================================================
+    # OTHER ERRORS
+    # ========================================================
 
     except Exception as e:
 
@@ -352,9 +531,17 @@ async def handle_client(websocket):
             e
         )
 
+    # ========================================================
+    # CLEANUP
+    # ========================================================
+
     finally:
 
         if room_id:
+
+            # ------------------------------------------------
+            # REMOVE FROM ACTIVE CLIENTS
+            # ------------------------------------------------
 
             remove_client(
                 room_id,
@@ -366,38 +553,34 @@ async def handle_client(websocket):
                 f"removed from active clients"
             )
 
+            # ------------------------------------------------
+            # ADMIN CLEANUP
+            # ------------------------------------------------
 
-            if user and user.get(
-                "user_type"
-            ) == "admin":
+            if (
+                user
+                and user.get("user_type") == "admin"
+            ):
 
-
+                # Delete all messages
                 db.messages_collection.delete_many({
-
                     "room_id": room_id
-
                 })
 
-
-
+                # Delete all files
                 db.files_collection.delete_many({
-
                     "room_id": room_id
-
                 })
 
-
+                # Delete all room users
                 db.user_collection.delete_many({
-
                     "room_id": room_id
-
                 })
 
+                # Delete room
                 room_result = (
                     db.rooms_collection.delete_one({
-
                         "room_id": room_id
-
                     })
                 )
 
@@ -410,6 +593,10 @@ async def handle_client(websocket):
                     "========== CLEANUP DONE ==========\n"
                 )
 
+            # ------------------------------------------------
+            # NORMAL USER LEFT
+            # ------------------------------------------------
+
             else:
 
                 if session_token:
@@ -418,19 +605,19 @@ async def handle_client(websocket):
 
                         {
                             "session_token":
-                                session_token,
+                            session_token,
 
                             "room_id":
-                                room_id
+                            room_id
                         },
 
                         {
                             "$set": {
-
                                 "left_at":
-                                    datetime.utcnow().isoformat()
+                                utc_now()
                             }
                         }
+
                     )
 
                     print(
@@ -438,7 +625,9 @@ async def handle_client(websocket):
                         f"marked as left"
                     )
 
-
+            # ------------------------------------------------
+            # UPDATE ACTIVE USERS
+            # ------------------------------------------------
 
             if room_id in rooms:
 
@@ -447,7 +636,9 @@ async def handle_client(websocket):
                 )
 
 
-
+# ============================================================
+# WEBSOCKET SERVER
+# ============================================================
 
 async def main():
 
@@ -463,18 +654,18 @@ async def main():
 
         print(
             "WebSocket server running "
-            "on port 8001"
+            "on ws://0.0.0.0:8001"
         )
 
         await asyncio.Future()
 
 
+# ============================================================
+# START SERVER
+# ============================================================
 
 if __name__ == "__main__":
 
     asyncio.run(
         main()
     )
-
-
-    
