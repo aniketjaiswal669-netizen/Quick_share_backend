@@ -4,7 +4,7 @@ from fastapi import HTTPException,UploadFile,Form
 from bson import ObjectId
 from fastapi.responses import Response
 import base64
-from websocket import broadcast_to_room
+from websocket_function import broadcast_to_room
 import json
 
 ALLOWED_TYPES = {
