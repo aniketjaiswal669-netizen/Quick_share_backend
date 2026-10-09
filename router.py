@@ -8,14 +8,16 @@ from websocket_function import broadcast_to_room
 import json
 
 ALLOWED_TYPES = {
-    "image/jpeg": 5 * 1024 * 1024,
-    "image/png": 5 * 1024 * 1024,
-    "image/webp": 5 * 1024 * 1024,
+    "image/jpeg": 20 * 1024 * 1024,   
+    "image/png": 20 * 1024 * 1024,    
+    "image/webp": 20 * 1024 * 1024,   
 
-    "application/pdf": 10 * 1024 * 1024,
+    "application/pdf": 100 * 1024 * 1024,
 
-    "video/mp4": 100 * 1024 * 1024,
+    "video/mp4": 1024 * 1024 * 1024,
 }
+
+
 
 
 
