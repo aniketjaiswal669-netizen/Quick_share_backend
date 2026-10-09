@@ -49,7 +49,7 @@ def get_messages(
     )
 
 
-@app.post("/room/out")
+@app.delete("/room/out")
 def out(
     room_id: str = Query(..., min_length=6, max_length=15),
     session_token: str = Query(..., min_length=1)
