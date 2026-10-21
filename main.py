@@ -37,7 +37,6 @@ async def upload_file(
         file_data
     )
 
-
 @app.get("/history/{room_id}")
 def get_messages(
     room_id: str = Path(..., min_length=6, max_length=15),
@@ -49,8 +48,8 @@ def get_messages(
     )
 
 
-@app.delete("/room/out")
-def out(
+@app.post("/room/out")
+def room_out(
     room_id: str = Query(..., min_length=6, max_length=15),
     session_token: str = Query(..., min_length=1)
 ):
@@ -90,3 +89,32 @@ async def download_file(
         file_id=file_id,
         session_token=session_token
     )
+
+
+@app.post("/room/transfer-admin")
+def transfer_admin_api(data: data_models.TransferAdminRequest):
+
+    return router.transfer_admin(
+        room_id=data.room_id,
+        session_token=data.session_token,
+        user_name=data.user_name
+    )
+
+
+@app.get("/room/users")
+def get_room_users_api(
+    room_id: str = Query(..., min_length=6, max_length=15),
+    session_token: str = Query(...)
+):
+    return router.get_room_users(
+        room_id=room_id,
+        session_token=session_token
+    )
+
+@app.delete("/room/delete")
+def delete_room_api(data: data_models.DeleteRoomRequest):
+    return router.delete_room(
+        room_id=data.room_id,
+        session_token=data.session_token
+    )
+

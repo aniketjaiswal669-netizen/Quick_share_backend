@@ -6,6 +6,8 @@ from websockets.exceptions import ConnectionClosed
 
 import db
 
+from bson import ObjectId
+from fastapi.encoders import jsonable_encoder
 
 # ============================================================
 # GLOBAL ACTIVE CONNECTIONS
@@ -271,11 +273,6 @@ async def broadcast_active_users(room_id):
         response
     )
 
-
-# ============================================================
-# CHAT FUNCTIONS
-# ============================================================
-
 async def handle_chat_message(
     room_id,
     user_name,
@@ -346,33 +343,82 @@ async def handle_chat_message(
     return None
 
 
-async def delete_message_event(
-    room_id,
-    message_id
-):
-    """
-    Notify all users that a message was deleted.
 
-    Actual MongoDB deletion should be
-    handled by the REST API.
-    """
-
-    response = json.dumps({
-
-        "type": "message_deleted",
-
-        "message_id": message_id
+async def delete_message_event(room_id, message_id, session_token):
+    user = db.user_collection.find_one({
+        "session_token": session_token,
+        "room_id": room_id
     })
 
-    await broadcast_to_room(
-        room_id,
-        response
-    )
+    if not user:
+        return {
+            "type": "delete_message_error",
+            "message": "Invalid session token"
+        }
+
+    try:
+        message_object_id = ObjectId(message_id)
+    except Exception:
+        return {
+            "type": "delete_message_error",
+            "message": "Invalid message ID"
+        }
+
+    message = db.messages_collection.find_one({
+        "_id": message_object_id,
+        "room_id": room_id
+    })
+
+    if not message:
+        return {
+            "type": "delete_message_error",
+            "message": "Message not found"
+        }
+
+    is_admin = user.get("user_type") == "admin"
+    is_owner = message.get("user_name") == user.get("user_name")
+
+    if not is_admin and not is_owner:
+        return {
+            "type": "delete_message_error",
+            "message": "You can delete only your own messages"
+        }
+
+    result = db.messages_collection.delete_one({
+        "_id": message_object_id,
+        "room_id": room_id
+    })
+
+    if result.deleted_count == 0:
+        return {
+            "type": "delete_message_error",
+            "message": "Message could not be deleted"
+        }
+
+    file_id = message.get("file_id")
+
+    if file_id:
+        try:
+            db.files_collection.delete_one({
+                "_id": ObjectId(file_id)
+            })
+        except Exception as exc:
+            print(f"File deletion error: {exc}")
+
+    delete_event = json.dumps({
+        "type": "message_deleted",
+        "message_id": str(message_object_id)
+    })
+
+    await broadcast_to_room(room_id, delete_event)
+
+    return {
+        "type": "message_deleted",
+        "message_id": str(message_object_id)
+    }
 
 
-# ============================================================
-# SCREEN SHARE FUNCTIONS
-# ============================================================
+
 
 async def handle_screen_share_request(
     websocket,
@@ -653,4 +699,22 @@ async def handle_screen_share_stop(
         room_id,
         response,
         exclude_websocket=websocket
+    )
+
+
+async def notify_admin_promoted(
+    room_id,
+    target_user_name
+):
+    message = json.dumps({
+        "type": "admin_promoted",
+        "room_id": room_id,
+        "user_name": target_user_name,
+        "message": "You are now the admin of this room"
+    })
+
+    return await send_to_user(
+        room_id,
+        target_user_name,
+        message
     )

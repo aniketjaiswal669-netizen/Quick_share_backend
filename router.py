@@ -4,7 +4,7 @@ from fastapi import HTTPException,UploadFile,Form
 from bson import ObjectId
 from fastapi.responses import Response
 import base64
-from websocket_function import broadcast_to_room
+from websocket_function import broadcast_to_room,notify_admin_promoted
 import json
 
 ALLOWED_TYPES = {
@@ -16,8 +16,6 @@ ALLOWED_TYPES = {
 
     "video/mp4": 1024 * 1024 * 1024,
 }
-
-
 
 
 
@@ -246,42 +244,18 @@ def room_out(room_id, session_token):
             detail="Invalid room ID or session token"
         )
     
-    if user["user_type"] == "admin":
-
-        room = db.rooms_collection.find_one({
-            "room_id": room_id
-        })
-
-        if not room:
-            raise HTTPException(
-                status_code=404,
-                detail="Room not found"
-            )
-
-        db.files_collection.delete_many({
-            "room_id": room_id
-        })
-        db.user_collection.delete_many({
-            "room_id": room_id
-        })
-        db.messages_collection.delete_many({
-            "room_id": room_id
-        })
-
-        db.rooms_collection.delete_one({
-            "room_id": room_id
-        })
-
-        return {
-            "message": "Chat ended and room deleted",
-            "room_id": room_id
-        }
-
+    if user.get("user_type") == "admin":
+        raise HTTPException(
+            status_code=409,
+            detail="Transfer admin privileges before leaving the room"
+        )
+    
     db.user_collection.update_one(
        {"session_token": session_token},
        {
         "$set": {
-            "left_at": str(datetime.utcnow())
+            "left_at": str(datetime.utcnow()),
+            "status":"offline"
         }
         }
     )
@@ -459,3 +433,153 @@ def download_file(file_id: str, session_token: str):
             )
         }
     )
+
+def get_room_users(room_id, session_token):
+    admin = db.user_collection.find_one({
+        "room_id": room_id,
+        "session_token": session_token,
+        "user_type": "admin"
+    })
+
+    if not admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the admin can view all room users"
+        )
+
+    users = list(db.user_collection.find(
+        {"room_id": room_id,"left_at":"","user_type":"user"},
+        {
+            "_id": 0,
+            "user_name": 1,
+            "user_type": 1,
+        }
+    ))
+
+    return {
+        "room_id": room_id,
+        "users": users
+    }
+
+def transfer_admin(room_id, session_token, user_name):
+
+    admin = db.user_collection.find_one({
+        "room_id": room_id,
+        "session_token": session_token,
+        "user_type": "admin"
+    })
+
+    if not admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the current admin can transfer privileges"
+        )
+
+    target_user = db.user_collection.find_one({
+        "room_id": room_id,
+        "user_name": user_name
+    })
+
+    if not target_user:
+        raise HTTPException(
+            status_code=404,
+            detail="Target user not found in this room"
+        )
+
+    if target_user["_id"] == admin["_id"]:
+        raise HTTPException(
+            status_code=400,
+            detail="You are already the admin"
+        )
+
+    demotion = db.user_collection.update_one(
+        {
+            "_id": admin["_id"],
+            "room_id": room_id,
+            "session_token": session_token,
+            "user_type": "admin"
+        },
+        {
+            "$set": {"user_type": "user"}
+        }
+    )
+
+    if demotion.modified_count != 1:
+        raise HTTPException(
+            status_code=409,
+            detail="Could not transfer admin privileges"
+        )
+    
+    promotion = db.user_collection.update_one(
+        {
+            "_id": target_user["_id"],
+            "room_id": room_id,
+            "user_type": "user"
+        },
+        {
+            "$set": {"user_type": "admin"}
+        }
+    )
+
+    if promotion.modified_count != 1:
+
+        db.user_collection.update_one(
+            {
+                "_id": admin["_id"],
+                "room_id": room_id,
+                "session_token": session_token,
+                "user_type": "user"
+            },
+            {
+                "$set": {"user_type": "admin"}
+            }
+        )
+
+        raise HTTPException(
+            status_code=409,
+            detail="Could not transfer admin privileges"
+        )
+
+    notify_admin_promoted(
+        room_id,
+        target_user["user_name"]
+    )
+
+    return {
+        "message": "Admin privileges transferred successfully",
+        "new_admin": target_user["user_name"]
+    }
+
+
+def delete_room(room_id: str, session_token: str):
+    admin = db.user_collection.find_one({
+        "room_id": room_id,
+        "session_token": session_token,
+        "user_type": "admin"
+    })
+
+    if not admin:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the current room admin can delete this room"
+        )
+
+    room = db.rooms_collection.find_one({
+        "room_id": room_id
+    })
+
+    if not room:
+        raise HTTPException(
+            status_code=404,
+            detail="Room not found"
+        )
+    db.messages_collection.delete_many({"room_id": room_id})
+    db.files_collection.delete_many({"room_id": room_id})
+    db.user_collection.delete_many({"room_id": room_id})
+    db.rooms_collection.delete_one({"room_id": room_id})
+
+    return {
+        "success": True,
+        "room_id": room_id,
+        "message": "Room deleted successfully"
+    }
