@@ -266,7 +266,7 @@ async def handle_client(websocket):
             print(f"[OLD ADMIN DEMOTED] {user_name}")
 
             # Find the earliest active user
-            next_admin = db.user_collection.find_one(
+            user_list = db.user_collection.find_one(
                 {
                     "room_id": room_id,
                     "session_token": {"$ne": session_token},
@@ -275,6 +275,7 @@ async def handle_client(websocket):
                 },
                 sort=[("joined_at", 1)]
             )
+            next_admin=user_list[0]
             print(next_admin["user_name"])
             if next_admin:
                 next_admin_username = next_admin["user_name"]
